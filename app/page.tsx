@@ -1,8 +1,8 @@
 "use client";
 
-import { useChat } from '@ai-sdk/react';
-import { useState, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import { useChat } from "@ai-sdk/react";
+import { useState, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 
 const EXAMPLE_QUERIES = [
   "What are agents saying about CRMs?",
@@ -17,38 +17,45 @@ export default function Home() {
   const [timeframe, setTimeframe] = useState("month");
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState("");
-  
-  // FIX: Standard useChat hook
-  const { messages, input, handleInputChange, handleSubmit, append, isLoading } = useChat({
-    api: '/api/digest',
-    body: { timeframe },
-    initialInput: inputValue,
-    onFinish: () => setInputValue(""), 
-  });
 
-  // Load history on mount
+  const {
+    messages,
+    input,
+    handleInputChange,
+    append,
+    isLoading,
+  } = useChat({ api: "/api/digest" });
+
   useEffect(() => {
     const saved = localStorage.getItem(HISTORY_KEY);
     if (saved) setSearchHistory(JSON.parse(saved));
   }, []);
 
   const addToHistory = (query: string) => {
-    const updated = [query, ...searchHistory.filter(h => h !== query)].slice(0, MAX_HISTORY);
+    const updated = [query, ...searchHistory.filter((h) => h !== query)].slice(0, MAX_HISTORY);
     setSearchHistory(updated);
     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
   };
 
-  const handleExampleClick = (query: string) => {
+  const handleExampleClick = async (query: string) => {
     addToHistory(query);
-    // FIX: Use 'append' instead of 'sendMessage'
-    append({ role: 'user', content: query });
+    await append({
+      role: "user",
+      content: query,
+      // ✅ Pass timeframe dynamically
+      context: { timeframe },
+    });
   };
 
-  const onFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const onFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (input.trim()) {
       addToHistory(input);
-      handleSubmit(e);
+      await append({
+        role: "user",
+        content: input,
+        context: { timeframe },
+      });
     }
   };
 
@@ -66,15 +73,13 @@ export default function Home() {
       </div>
 
       <form onSubmit={onFormSubmit} className="mb-6 space-y-4">
-        <div>
-          <input
-            value={input}
-            onChange={handleInputChange}
-            placeholder="What are agents saying about CRMs?"
-            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
-            disabled={isLoading}
-          />
-        </div>
+        <input
+          value={input}
+          onChange={handleInputChange}
+          placeholder="What are agents saying about CRMs?"
+          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
+          disabled={isLoading}
+        />
 
         <div className="flex flex-wrap gap-2">
           {EXAMPLE_QUERIES.map((q) => (
@@ -122,7 +127,7 @@ export default function Home() {
             disabled={isLoading}
             className="flex-1 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 disabled:bg-blue-400 transition-all"
           >
-            {isLoading ? 'Scanning...' : 'Run Digest'}
+            {isLoading ? "Scanning..." : "Run Digest"}
           </button>
         </div>
       </form>
@@ -130,7 +135,7 @@ export default function Home() {
       <div className="space-y-6">
         {messages.map((m) => (
           <div key={m.id}>
-            {m.role === 'user' ? (
+            {m.role === "user" ? (
               <div className="bg-gray-100 p-4 rounded-lg">
                 <p className="font-semibold text-gray-900">You: {m.content}</p>
               </div>
@@ -139,20 +144,20 @@ export default function Home() {
                 {m.toolInvocations?.map((toolCall) => (
                   <div key={toolCall.toolCallId} className="flex items-center gap-2 text-sm text-blue-600 mb-4 bg-blue-50 p-2 rounded w-fit">
                     <span className="animate-pulse">●</span>
-                    {toolCall.toolName === 'search_web' 
-                      ? 'Scanning Reddit & BiggerPockets...' 
-                      : 'Processing...'}
+                    {toolCall.toolName === "search_web" ? "Scanning Reddit & BiggerPockets..." : "Processing..."}
                   </div>
                 ))}
-                
+
                 <div className="prose max-w-none text-gray-800">
-                  <ReactMarkdown components={{
-                    a: ({ href, children }) => (
-                      <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                        {children}
-                      </a>
-                    )
-                  }}>
+                  <ReactMarkdown
+                    components={{
+                      a: ({ href, children }) => (
+                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          {children}
+                        </a>
+                      ),
+                    }}
+                  >
                     {m.content}
                   </ReactMarkdown>
                 </div>
