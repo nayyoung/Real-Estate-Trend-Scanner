@@ -1,5 +1,5 @@
 import { anthropic } from '@ai-sdk/anthropic';
-import { streamText, tool } from 'ai';
+import { streamText, stepCountIs } from 'ai';
 import { z } from 'zod';
 import Exa from 'exa-js';
 
@@ -65,12 +65,12 @@ export async function POST(req: Request) {
              - Cite your sources when referencing specific discussions.`,
     messages, // Pass the messages array directly
     tools: {
-      search_web: tool({
+      search_web: {
         description: 'Search for real estate discussions and trends',
-        parameters: z.object({
+        inputSchema: z.object({
           searchQuery: z.string().describe('The search query to execute'),
         }),
-        execute: async ({ searchQuery }) => {
+        execute: async ({ searchQuery }: { searchQuery: string }) => {
           const searchResponse = await exa.searchAndContents(searchQuery, {
             type: 'neural',
             useAutoprompt: true,
@@ -80,10 +80,10 @@ export async function POST(req: Request) {
           });
           return searchResponse.results;
         },
-      }),
+      },
     },
-    maxSteps: 5, // Use maxSteps instead of stopWhen for tool loops
+    stopWhen: stepCountIs(5), // Allow up to 5 tool call rounds
   });
 
-  return result.toDataStreamResponse();
+  return result.toUIMessageStreamResponse();
 }
