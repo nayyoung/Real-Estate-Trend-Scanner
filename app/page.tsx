@@ -62,9 +62,14 @@ export default function Home() {
     const assistantMessages = messages.filter(m => m.role === 'assistant');
     if (assistantMessages.length === 0) return;
     const lastMessage = assistantMessages[assistantMessages.length - 1];
-    const textContent = lastMessage.parts
-      .filter(part => part.type === 'text')
-      .map(part => 'text' in part ? part.text : '')
+    const textParts = lastMessage.parts.filter(part => part.type === 'text');
+    const textContent = textParts
+      .map(part => {
+        if ('text' in part) {
+          return part.text;
+        }
+        return '';
+      })
       .join('\n');
     try {
       await navigator.clipboard.writeText(textContent);
@@ -260,8 +265,11 @@ export default function Home() {
             {m.role === 'user' ? (
               <div className="bg-gray-100 p-4 rounded-lg">
                 <p className="font-semibold">
-                  You: {m.parts.find(part => part.type === 'text' && 'text' in part) 
-                    ? (m.parts.find(part => part.type === 'text') as any).text 
+                  You: {m.parts.find(part => part.type === 'text') 
+                    ? (() => {
+                        const textPart = m.parts.find(p => p.type === 'text');
+                        return textPart && 'text' in textPart ? textPart.text : '';
+                      })()
                     : ''}
                 </p>
               </div>
@@ -270,14 +278,20 @@ export default function Home() {
                 {/* Tool Invocations */}
                 {m.parts.some(part => part.type === 'tool-call') && (
                   <div className="px-6 py-4 bg-blue-50 border-b border-blue-100 space-y-2">
-                    {m.parts.filter(part => part.type === 'tool-call').map((part: any, idx: number) => (
-                      <div key={idx} className="flex items-center gap-2 text-sm text-blue-700">
-                        <span className="animate-pulse">●</span> 
-                        {part.toolName === 'search_web' 
-                          ? `Scanning sources for: ${part.args?.searchQuery || 'content'}...` 
-                          : 'Processing...'}
-                      </div>
-                    ))}
+                    {m.parts.filter(part => part.type === 'tool-call').map((part, idx: number) => {
+                      if ('toolName' in part && 'args' in part) {
+                        const toolPart = part as { toolName: string; args?: { searchQuery?: string } };
+                        return (
+                          <div key={idx} className="flex items-center gap-2 text-sm text-blue-700">
+                            <span className="animate-pulse">●</span> 
+                            {toolPart.toolName === 'search_web' 
+                              ? `Scanning sources for: ${toolPart.args?.searchQuery || 'content'}...` 
+                              : 'Processing...'}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
                   </div>
                 )}
                 
@@ -319,25 +333,30 @@ export default function Home() {
                     {/* Results Content */}
                     <div className="p-6">
                       <div className="prose max-w-none">
-                        {m.parts.filter(part => part.type === 'text').map((part: any, idx: number) => (
-                          <ReactMarkdown
-                            key={idx}
-                            components={{
-                              a: ({ href, children }) => (
-                                <a
-                                  href={href}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 underline"
-                                >
-                                  {children}
-                                </a>
-                              ),
-                            }}
-                          >
-                            {part.text}
-                          </ReactMarkdown>
-                        ))}
+                        {m.parts.filter(part => part.type === 'text').map((part, idx: number) => {
+                          if ('text' in part) {
+                            return (
+                              <ReactMarkdown
+                                key={idx}
+                                components={{
+                                  a: ({ href, children }) => (
+                                    <a
+                                      href={href}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 hover:text-blue-800 underline"
+                                    >
+                                      {children}
+                                    </a>
+                                  ),
+                                }}
+                              >
+                                {part.text}
+                              </ReactMarkdown>
+                            );
+                          }
+                          return null;
+                        })}
                       </div>
                     </div>
                   </>

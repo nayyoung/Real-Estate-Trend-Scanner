@@ -8,8 +8,56 @@ export const maxDuration = 60; // Allow longer timeouts for research
 export async function POST(req: Request) {
   const { query, timeframe } = await req.json();
 
-  // Initialize Exa lazily (only when API is called)
-  const exa = new Exa(process.env.EXA_API_KEY || '');
+  // Validate input
+  if (!query || typeof query !== 'string') {
+    return new Response(
+      JSON.stringify({ error: 'Query is required and must be a string' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  if (query.trim().length === 0) {
+    return new Response(
+      JSON.stringify({ error: 'Query cannot be empty' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  if (query.length > 500) {
+    return new Response(
+      JSON.stringify({ error: 'Query must be 500 characters or less' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Validate timeframe
+  const validTimeframes = ['week', 'month', 'quarter'];
+  if (timeframe && !validTimeframes.includes(timeframe)) {
+    return new Response(
+      JSON.stringify({ error: 'Invalid timeframe. Must be week, month, or quarter' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Check API keys
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.error('ANTHROPIC_API_KEY is not configured');
+    return new Response(
+      JSON.stringify({ error: 'Server configuration error' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  if (!process.env.EXA_API_KEY) {
+    console.error('EXA_API_KEY is not configured');
+    return new Response(
+      JSON.stringify({ error: 'Server configuration error' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Initialize Exa with validated API key
+  const exa = new Exa(process.env.EXA_API_KEY);
 
   // Calculate start date based on timeframe for better filtering
   const startDate = new Date();
