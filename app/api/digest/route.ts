@@ -6,9 +6,34 @@ import Exa from 'exa-js';
 export const maxDuration = 60; // Allow longer timeouts for research
 
 export async function POST(req: Request) {
-  const { query, timeframe } = await req.json();
+  const { messages, timeframe } = await req.json();
 
   // Validate input
+  if (!messages || !Array.isArray(messages)) {
+    return new Response(
+      JSON.stringify({ error: 'Messages array is required' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Extract query from the last user message
+  const lastUserMessage = messages.filter((m: any) => m.role === 'user').pop();
+  if (!lastUserMessage) {
+    return new Response(
+      JSON.stringify({ error: 'No user message found' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Extract text from message parts
+  let query = '';
+  if (lastUserMessage.parts) {
+    const textParts = lastUserMessage.parts.filter((p: any) => p.type === 'text');
+    query = textParts.map((p: any) => p.text).join(' ');
+  } else if (lastUserMessage.content) {
+    query = lastUserMessage.content;
+  }
+
   if (!query || typeof query !== 'string') {
     return new Response(
       JSON.stringify({ error: 'Query is required and must be a string' }),
