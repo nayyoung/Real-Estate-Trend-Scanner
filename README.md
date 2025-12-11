@@ -1,6 +1,6 @@
 # Digest
 
-A real estate trend scanner that uses Claude AI with web search to analyze online discussions and surface product opportunities.
+A real estate trend scanner that uses Claude AI with Exa search to analyze online discussions and surface product opportunities in real-time.
 
 ## What It Does
 
@@ -10,15 +10,17 @@ Digest scans real estate communities (Reddit, BiggerPockets, LinkedIn, blogs) to
 - **Patterns** — Which complaints appear across multiple sources?
 - **Opportunities** — What products could solve these problems?
 
-Enter a research query like "What are agents saying about CRMs?" and get a structured digest with themes, signal strength, example quotes, and actionable product ideas.
+Enter a research query like "What are agents saying about CRMs?" and watch as the AI streams results in real-time, showing you exactly what it's searching for and finding.
 
 ## Tech Stack
 
 - **Next.js 14** (App Router)
 - **TypeScript**
 - **Tailwind CSS**
-- **Claude Sonnet** with web search (Anthropic API)
-- **Vercel** (deployment)
+- **Vercel AI SDK** - Streaming AI responses
+- **Claude 3.5 Sonnet** (via @ai-sdk/anthropic)
+- **Exa AI** - Real-time web search
+- **React Markdown** - Rich text rendering
 
 ## Setup
 
@@ -26,6 +28,7 @@ Enter a research query like "What are agents saying about CRMs?" and get a struc
 
 - Node.js 18+
 - Anthropic API key ([get one here](https://console.anthropic.com/))
+- Exa API key ([get one here](https://exa.ai/))
 
 ### Local Development
 
@@ -48,10 +51,11 @@ npm install
 cp .env.example .env.local
 ```
 
-4. Add your Anthropic API key to `.env.local`:
+4. Add your API keys to `.env.local`:
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...
+EXA_API_KEY=your-exa-api-key
 ```
 
 5. Start the dev server:
@@ -66,7 +70,7 @@ npm run dev
 
 1. Push to GitHub
 2. Import project in [Vercel](https://vercel.com)
-3. Add `ANTHROPIC_API_KEY` to Environment Variables in Vercel project settings
+3. Add both `ANTHROPIC_API_KEY` and `EXA_API_KEY` to Environment Variables in Vercel project settings
 4. Deploy
 
 ## Example Queries
@@ -84,13 +88,10 @@ Try these to see Digest in action:
 ```
 digest/
 ├── app/
-│   ├── api/digest/route.ts   # API endpoint
+│   ├── api/digest/route.ts   # Streaming API endpoint with Exa search
 │   ├── globals.css           # Styles
 │   ├── layout.tsx            # Root layout
-│   └── page.tsx              # Main UI
-├── lib/
-│   ├── anthropic.ts          # Claude API client
-│   └── system-prompt.ts      # Prompt definition
+│   └── page.tsx              # Main UI with streaming support
 ├── DESIGN.md                 # System design doc
 ├── TEST-PLAN.md              # Test plan
 └── README.md                 # This file
@@ -99,11 +100,12 @@ digest/
 ## How It Works
 
 1. User enters a research query and timeframe
-2. Request goes to `/api/digest` endpoint
-3. Claude is called with web search enabled
-4. Claude searches Reddit, BiggerPockets, LinkedIn, and blogs
-5. Results are synthesized into a structured digest
-6. Markdown response is rendered in the UI
+2. Request goes to `/api/digest` endpoint with streaming enabled
+3. Claude uses Exa API to search real-time web content
+4. Search progress is streamed to the frontend (e.g., "Scanning Reddit...")
+5. Results are analyzed and synthesized by Claude
+6. Markdown response streams in real-time to the UI
+7. Tool invocations and final results are displayed with rich formatting
 
 ## Limitations
 
