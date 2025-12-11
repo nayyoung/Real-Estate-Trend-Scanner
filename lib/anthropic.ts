@@ -11,11 +11,18 @@ export async function callDigest(
 ): Promise<string> {
   const userPrompt = buildUserPrompt(query, timeframe);
 
-  // Using Claude 3.5 Sonnet - the latest available model
+  // Using Claude Sonnet 4 with web search enabled
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 4096,
     system: SYSTEM_PROMPT,
+    tools: [
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+        max_uses: 10,
+      },
+    ],
     messages: [
       {
         role: "user",
