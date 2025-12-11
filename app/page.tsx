@@ -1,8 +1,7 @@
 "use client";
 
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 
 // Example queries for users to try
@@ -10,8 +9,6 @@ const EXAMPLE_QUERIES = [
   "What are agents saying about CRMs?",
   "Pain points with property management software",
   "Trends in real estate marketing tools",
-  "What do investors want in deal analysis?",
-  "Complaints about showing scheduling apps",
 ];
 
 const MAX_HISTORY = 5;
@@ -21,21 +18,12 @@ export default function Home() {
   const [timeframe, setTimeframe] = useState("month");
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
-  const [inputValue, setInputValue] = useState("");
 
-  const transport = useMemo(
-    () => new DefaultChatTransport({
-      api: '/api/digest',
-      body: { timeframe },
-    }),
-    [timeframe]
-  );
-
-  const { messages, sendMessage, status } = useChat({
-    transport,
+  // Initialize the chat hook with correct API
+  const { messages, input, handleInputChange, handleSubmit, append, isLoading } = useChat({
+    api: '/api/digest',
+    body: { timeframe },
   });
-
-  const isLoading = status === 'streaming' || status === 'submitted';
 
   // Load search history from localStorage on mount
   useEffect(() => {
@@ -50,8 +38,8 @@ export default function Home() {
   }, []);
 
   // Save query to history
-  function saveToHistory(q: string) {
-    const trimmed = q.trim();
+  function addToHistory(query: string) {
+    const trimmed = query.trim();
     const updated = [trimmed, ...searchHistory.filter((h) => h !== trimmed)].slice(0, MAX_HISTORY);
     setSearchHistory(updated);
     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
@@ -62,17 +50,8 @@ export default function Home() {
     const assistantMessages = messages.filter(m => m.role === 'assistant');
     if (assistantMessages.length === 0) return;
     const lastMessage = assistantMessages[assistantMessages.length - 1];
-    const textParts = lastMessage.parts.filter(part => part.type === 'text');
-    const textContent = textParts
-      .map(part => {
-        if ('text' in part) {
-          return part.text;
-        }
-        return '';
-      })
-      .join('\n');
     try {
-      await navigator.clipboard.writeText(textContent);
+      await navigator.clipboard.writeText(lastMessage.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -87,16 +66,18 @@ export default function Home() {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
   }
 
-  function handleExampleClick(example: string) {
-    setInputValue(example);
+  // Handle example clicks - use append to send message directly
+  function handleExampleClick(query: string) {
+    addToHistory(query);
+    append({ role: 'user', content: query });
   }
 
-  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  // Wrap standard submit to save history
+  function onFormSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (inputValue.trim()) {
-      saveToHistory(inputValue.trim());
-      sendMessage({ text: inputValue });
-      setInputValue("");
+    if (input.trim()) {
+      addToHistory(input);
+      handleSubmit(e);
     }
   }
 
@@ -119,7 +100,7 @@ export default function Home() {
       </div>
 
       {/* Form */}
-      <form onSubmit={onSubmit} className="mb-6">
+      <form onSubmit={onFormSubmit} className="mb-6">
         <div className="space-y-4">
           {/* Query Input */}
           <div>
@@ -135,8 +116,8 @@ export default function Home() {
             <input
               type="text"
               id="query"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              value={input}
+              onChange={handleInputChange}
               placeholder="What are agents saying about CRMs?"
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-900 placeholder-gray-400"
               disabled={isLoading}
@@ -145,7 +126,7 @@ export default function Home() {
 
           {/* Example Queries */}
           <div className="flex flex-wrap gap-2">
-            {EXAMPLE_QUERIES.slice(0, 3).map((example) => (
+            {EXAMPLE_QUERIES.map((example) => (
               <button
                 key={example}
                 type="button"
@@ -264,39 +245,26 @@ export default function Home() {
           <div key={m.id}>
             {m.role === 'user' ? (
               <div className="bg-gray-100 p-4 rounded-lg">
-                <p className="font-semibold">
-                  You: {m.parts.find(part => part.type === 'text') 
-                    ? (() => {
-                        const textPart = m.parts.find(p => p.type === 'text');
-                        return textPart && 'text' in textPart ? textPart.text : '';
-                      })()
-                    : ''}
-                </p>
+                <p className="font-semibold">You: {m.content}</p>
               </div>
             ) : (
               <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-                {/* Tool Invocations */}
-                {m.parts.some(part => part.type === 'tool-call') && (
+                {/* Tool Invocations (Searching...) */}
+                {m.toolInvocations && m.toolInvocations.length > 0 && (
                   <div className="px-6 py-4 bg-blue-50 border-b border-blue-100 space-y-2">
-                    {m.parts.filter(part => part.type === 'tool-call').map((part, idx: number) => {
-                      if ('toolName' in part && 'args' in part) {
-                        const toolPart = part as { toolName: string; args?: { searchQuery?: string } };
-                        return (
-                          <div key={idx} className="flex items-center gap-2 text-sm text-blue-700">
-                            <span className="animate-pulse">●</span> 
-                            {toolPart.toolName === 'search_web' 
-                              ? `Scanning sources for: ${toolPart.args?.searchQuery || 'content'}...` 
-                              : 'Processing...'}
-                          </div>
-                        );
-                      }
-                      return null;
-                    })}
+                    {m.toolInvocations.map((toolCall) => (
+                      <div key={toolCall.toolCallId} className="flex items-center gap-2 text-sm text-blue-700">
+                        <span className="animate-pulse">●</span>
+                        {toolCall.toolName === 'search_web'
+                          ? `Scanning sources for: "${(toolCall.args as { searchQuery?: string })?.searchQuery || 'content'}"...`
+                          : 'Processing...'}
+                      </div>
+                    ))}
                   </div>
                 )}
-                
+
                 {/* Results Header and Content */}
-                {m.parts.some(part => part.type === 'text') && (
+                {m.content && (
                   <>
                     <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -333,30 +301,22 @@ export default function Home() {
                     {/* Results Content */}
                     <div className="p-6">
                       <div className="prose max-w-none">
-                        {m.parts.filter(part => part.type === 'text').map((part, idx: number) => {
-                          if ('text' in part) {
-                            return (
-                              <ReactMarkdown
-                                key={idx}
-                                components={{
-                                  a: ({ href, children }) => (
-                                    <a
-                                      href={href}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 hover:text-blue-800 underline"
-                                    >
-                                      {children}
-                                    </a>
-                                  ),
-                                }}
+                        <ReactMarkdown
+                          components={{
+                            a: ({ href, children }) => (
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 underline"
                               >
-                                {part.text}
-                              </ReactMarkdown>
-                            );
-                          }
-                          return null;
-                        })}
+                                {children}
+                              </a>
+                            ),
+                          }}
+                        >
+                          {m.content}
+                        </ReactMarkdown>
                       </div>
                     </div>
                   </>
