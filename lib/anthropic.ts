@@ -26,12 +26,9 @@ export async function callDigest(
 
   // Extract text content from response
   const textBlocks = response.content.filter((block) => block.type === "text");
-  const resultText = textBlocks.map((block) => {
-    if (block.type === "text") {
-      return block.text;
-    }
-    return "";
-  }).join("\n");
+  const resultText = textBlocks
+    .map((block) => (block.type === "text" ? block.text : ""))
+    .join("\n");
 
   if (!resultText) {
     throw new Error("No text response received from Claude");
