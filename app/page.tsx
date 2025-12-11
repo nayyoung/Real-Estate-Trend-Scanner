@@ -1,7 +1,8 @@
 "use client";
 
 import { useChat } from '@ai-sdk/react';
-import { useState, useEffect } from 'react';
+import { DefaultChatTransport } from 'ai';
+import { useState, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 
 // Example queries for users to try
@@ -20,11 +21,17 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [inputValue, setInputValue] = useState("");
 
+  // Create transport with memoization to prevent re-renders
+  const transport = useMemo(
+    () => new DefaultChatTransport({
+      api: '/api/digest',
+      body: { timeframe },
+    }),
+    [timeframe]
+  );
+
   // Initialize the chat hook with AI SDK v5 API
-  const { messages, append, status } = useChat({
-    api: '/api/digest',
-    body: { timeframe },
-  });
+  const { messages, sendMessage, status } = useChat({ transport });
 
   const isLoading = status === 'streaming' || status === 'submitted';
 
@@ -48,12 +55,8 @@ export default function Home() {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
   }
 
-  // Get text content from a message (handles both content string and parts array)
+  // Get text content from a message (AI SDK v5 uses parts array)
   function getMessageText(m: typeof messages[0]): string {
-    if (typeof m.content === 'string' && m.content) {
-      return m.content;
-    }
-    // For v5, check parts array
     if ('parts' in m && Array.isArray(m.parts)) {
       return m.parts
         .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
@@ -84,10 +87,10 @@ export default function Home() {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
   }
 
-  // Handle example/history clicks - use append to send message
+  // Handle example/history clicks - use sendMessage to send message
   function handleExampleClick(query: string) {
     addToHistory(query);
-    append({ role: 'user', content: query });
+    sendMessage({ text: query });
   }
 
   // Handle form submission
@@ -95,22 +98,21 @@ export default function Home() {
     e.preventDefault();
     if (inputValue.trim()) {
       addToHistory(inputValue.trim());
-      append({ role: 'user', content: inputValue.trim() });
+      sendMessage({ text: inputValue.trim() });
       setInputValue("");
     }
   }
 
-  // Get tool invocations from message (handles v5 parts-based structure)
+  // Get tool invocations from message (AI SDK v5 uses tool-{name} parts)
   function getToolInvocations(m: typeof messages[0]) {
-    if ('toolInvocations' in m && Array.isArray(m.toolInvocations)) {
-      return m.toolInvocations;
-    }
     if ('parts' in m && Array.isArray(m.parts)) {
       return m.parts
-        .filter((part): part is { type: 'tool-invocation'; toolInvocation: { toolCallId: string; toolName: string; args: Record<string, unknown> } } =>
-          part.type === 'tool-invocation'
-        )
-        .map(part => part.toolInvocation);
+        .filter((part) => typeof part.type === 'string' && part.type.startsWith('tool-'))
+        .map(part => ({
+          toolCallId: (part as { toolCallId?: string }).toolCallId || '',
+          toolName: part.type.replace('tool-', ''),
+          args: (part as { input?: Record<string, unknown> }).input || {},
+        }));
     }
     return [];
   }

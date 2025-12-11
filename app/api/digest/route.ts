@@ -5,16 +5,63 @@ import Exa from 'exa-js';
 
 export const maxDuration = 60;
 
+const MAX_QUERY_LENGTH = 500;
+
 export async function POST(req: Request) {
-  const { messages, timeframe } = await req.json();
+  // Validate environment variables
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return new Response(
+      JSON.stringify({ error: 'Server configuration error: Missing Anthropic API key' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  if (!process.env.EXA_API_KEY) {
+    return new Response(
+      JSON.stringify({ error: 'Server configuration error: Missing Exa API key' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Parse and validate request body
+  let body: { messages?: unknown; timeframe?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return new Response(
+      JSON.stringify({ error: 'Invalid JSON in request body' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const { messages, timeframe } = body;
+
+  // Validate messages array
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return new Response(
+      JSON.stringify({ error: 'Messages array is required and must not be empty' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Validate query length
+  const lastMessage = messages[messages.length - 1];
+  if (typeof lastMessage?.content === 'string' && lastMessage.content.length > MAX_QUERY_LENGTH) {
+    return new Response(
+      JSON.stringify({ error: `Query exceeds maximum length of ${MAX_QUERY_LENGTH} characters` }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
 
   const exa = new Exa(process.env.EXA_API_KEY);
 
-  // Calculate date based on timeframe
+  // Calculate date based on timeframe for filtering search results
   const startDate = new Date();
   if (timeframe === 'week') startDate.setDate(startDate.getDate() - 7);
   else if (timeframe === 'quarter') startDate.setDate(startDate.getDate() - 90);
   else startDate.setDate(startDate.getDate() - 30);
+
+  const startPublishedDate = startDate.toISOString().split('T')[0];
 
   const result = streamText({
     model: anthropic('claude-3-5-sonnet-20241022'),
@@ -77,6 +124,7 @@ export async function POST(req: Request) {
             numResults: 5,
             text: true,
             includeDomains: ['reddit.com', 'biggerpockets.com', 'linkedin.com'],
+            startPublishedDate,
           });
           return searchResponse.results;
         },
