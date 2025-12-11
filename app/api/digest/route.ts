@@ -5,10 +5,47 @@ import Exa from 'exa-js';
 
 export const maxDuration = 60; // Allow longer timeouts for research
 
+// Define message types for better type safety
+interface MessagePart {
+  type: string;
+  text?: string;
+}
+
+interface Message {
+  role: string;
+  parts?: MessagePart[];
+  content?: string;
+}
+
 export async function POST(req: Request) {
-  const { query, timeframe } = await req.json();
+  const { messages, timeframe } = await req.json();
 
   // Validate input
+  if (!messages || !Array.isArray(messages)) {
+    return new Response(
+      JSON.stringify({ error: 'Messages array is required' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Extract query from the last user message
+  const lastUserMessage = messages.filter((m: Message) => m.role === 'user').pop();
+  if (!lastUserMessage) {
+    return new Response(
+      JSON.stringify({ error: 'No user message found' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Extract text from message parts
+  let query = '';
+  if (lastUserMessage.parts && Array.isArray(lastUserMessage.parts)) {
+    const textParts = lastUserMessage.parts.filter((p: MessagePart) => p.type === 'text');
+    query = textParts.map((p: MessagePart) => p.text || '').join(' ');
+  } else if (lastUserMessage.content && typeof lastUserMessage.content === 'string') {
+    query = lastUserMessage.content;
+  }
+
   if (!query || typeof query !== 'string') {
     return new Response(
       JSON.stringify({ error: 'Query is required and must be a string' }),
