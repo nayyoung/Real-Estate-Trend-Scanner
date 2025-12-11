@@ -3,24 +3,32 @@
 @tailwind utilities;
 
 /* Custom styles for markdown rendering */
+.prose h2 {
+  @apply text-xl font-bold mt-8 mb-3 text-gray-900 pb-2 border-b border-gray-200;
+}
+
 .prose h3 {
   @apply text-lg font-semibold mt-6 mb-2 text-gray-900;
 }
 
+.prose h4 {
+  @apply text-base font-semibold mt-4 mb-2 text-gray-800;
+}
+
 .prose p {
-  @apply mb-3 text-gray-700;
+  @apply mb-3 text-gray-700 leading-relaxed;
 }
 
 .prose ul {
-  @apply list-disc pl-5 mb-4 space-y-1;
+  @apply list-disc pl-5 mb-4 space-y-2;
 }
 
 .prose ol {
-  @apply list-decimal pl-5 mb-4 space-y-1;
+  @apply list-decimal pl-5 mb-4 space-y-2;
 }
 
 .prose li {
-  @apply text-gray-700;
+  @apply text-gray-700 leading-relaxed;
 }
 
 .prose a {
@@ -29,4 +37,39 @@
 
 .prose strong {
   @apply font-semibold text-gray-900;
+}
+
+.prose blockquote {
+  @apply border-l-4 border-blue-200 pl-4 py-2 my-4 bg-blue-50/50 rounded-r-lg italic text-gray-600;
+}
+
+.prose code {
+  @apply bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded text-sm font-mono;
+}
+
+.prose pre {
+  @apply bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-4;
+}
+
+.prose pre code {
+  @apply bg-transparent text-inherit p-0;
+}
+
+.prose hr {
+  @apply my-6 border-gray-200;
+}
+
+/* Custom selection color */
+::selection {
+  @apply bg-blue-100 text-blue-900;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Focus visible styling for accessibility */
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-blue-500;
 }
