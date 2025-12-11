@@ -11,16 +11,11 @@ export async function callDigest(
 ): Promise<string> {
   const userPrompt = buildUserPrompt(query, timeframe);
 
+  // Using Claude 3.5 Sonnet - the latest available model
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-3-5-sonnet-20241022",
     max_tokens: 4096,
     system: SYSTEM_PROMPT,
-    tools: [
-      {
-        type: "web_search_20250305",
-        name: "web_search",
-      },
-    ],
     messages: [
       {
         role: "user",
@@ -31,12 +26,9 @@ export async function callDigest(
 
   // Extract text content from response
   const textBlocks = response.content.filter((block) => block.type === "text");
-  const resultText = textBlocks.map((block) => {
-    if (block.type === "text") {
-      return block.text;
-    }
-    return "";
-  }).join("\n");
+  const resultText = textBlocks
+    .map((block) => (block.type === "text" ? block.text : ""))
+    .join("\n");
 
   if (!resultText) {
     throw new Error("No text response received from Claude");
