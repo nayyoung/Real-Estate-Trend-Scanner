@@ -1,8 +1,7 @@
 "use client";
 
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 
 // Example queries for users to try
@@ -10,8 +9,6 @@ const EXAMPLE_QUERIES = [
   "What are agents saying about CRMs?",
   "Pain points with property management software",
   "Trends in real estate marketing tools",
-  "What do investors want in deal analysis?",
-  "Complaints about showing scheduling apps",
 ];
 
 const MAX_HISTORY = 5;
@@ -23,16 +20,10 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [inputValue, setInputValue] = useState("");
 
-  const transport = useMemo(
-    () => new DefaultChatTransport({
-      api: '/api/digest',
-      body: { timeframe },
-    }),
-    [timeframe]
-  );
-
-  const { messages, sendMessage, status } = useChat({
-    transport,
+  // Initialize the chat hook with AI SDK v5 API
+  const { messages, append, status } = useChat({
+    api: '/api/digest',
+    body: { timeframe },
   });
 
   const isLoading = status === 'streaming' || status === 'submitted';
@@ -50,11 +41,26 @@ export default function Home() {
   }, []);
 
   // Save query to history
-  function saveToHistory(q: string) {
-    const trimmed = q.trim();
+  function addToHistory(query: string) {
+    const trimmed = query.trim();
     const updated = [trimmed, ...searchHistory.filter((h) => h !== trimmed)].slice(0, MAX_HISTORY);
     setSearchHistory(updated);
     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+  }
+
+  // Get text content from a message (handles both content string and parts array)
+  function getMessageText(m: typeof messages[0]): string {
+    if (typeof m.content === 'string' && m.content) {
+      return m.content;
+    }
+    // For v5, check parts array
+    if ('parts' in m && Array.isArray(m.parts)) {
+      return m.parts
+        .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+        .map(part => part.text)
+        .join('\n');
+    }
+    return '';
   }
 
   // Copy results to clipboard
@@ -62,17 +68,8 @@ export default function Home() {
     const assistantMessages = messages.filter(m => m.role === 'assistant');
     if (assistantMessages.length === 0) return;
     const lastMessage = assistantMessages[assistantMessages.length - 1];
-    const textParts = lastMessage.parts.filter(part => part.type === 'text');
-    const textContent = textParts
-      .map(part => {
-        if ('text' in part) {
-          return part.text;
-        }
-        return '';
-      })
-      .join('\n');
     try {
-      await navigator.clipboard.writeText(textContent);
+      await navigator.clipboard.writeText(getMessageText(lastMessage));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -87,17 +84,35 @@ export default function Home() {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
   }
 
-  function handleExampleClick(example: string) {
-    setInputValue(example);
+  // Handle example/history clicks - use append to send message
+  function handleExampleClick(query: string) {
+    addToHistory(query);
+    append({ role: 'user', content: query });
   }
 
-  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  // Handle form submission
+  function onFormSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (inputValue.trim()) {
-      saveToHistory(inputValue.trim());
-      sendMessage({ text: inputValue });
+      addToHistory(inputValue.trim());
+      append({ role: 'user', content: inputValue.trim() });
       setInputValue("");
     }
+  }
+
+  // Get tool invocations from message (handles v5 parts-based structure)
+  function getToolInvocations(m: typeof messages[0]) {
+    if ('toolInvocations' in m && Array.isArray(m.toolInvocations)) {
+      return m.toolInvocations;
+    }
+    if ('parts' in m && Array.isArray(m.parts)) {
+      return m.parts
+        .filter((part): part is { type: 'tool-invocation'; toolInvocation: { toolCallId: string; toolName: string; args: Record<string, unknown> } } =>
+          part.type === 'tool-invocation'
+        )
+        .map(part => part.toolInvocation);
+    }
+    return [];
   }
 
   return (
@@ -119,7 +134,7 @@ export default function Home() {
       </div>
 
       {/* Form */}
-      <form onSubmit={onSubmit} className="mb-6">
+      <form onSubmit={onFormSubmit} className="mb-6">
         <div className="space-y-4">
           {/* Query Input */}
           <div>
@@ -145,7 +160,7 @@ export default function Home() {
 
           {/* Example Queries */}
           <div className="flex flex-wrap gap-2">
-            {EXAMPLE_QUERIES.slice(0, 3).map((example) => (
+            {EXAMPLE_QUERIES.map((example) => (
               <button
                 key={example}
                 type="button"
@@ -260,111 +275,95 @@ export default function Home() {
 
       {/* Messages Display */}
       <div className="space-y-6">
-        {messages.map((m) => (
-          <div key={m.id}>
-            {m.role === 'user' ? (
-              <div className="bg-gray-100 p-4 rounded-lg">
-                <p className="font-semibold">
-                  You: {m.parts.find(part => part.type === 'text') 
-                    ? (() => {
-                        const textPart = m.parts.find(p => p.type === 'text');
-                        return textPart && 'text' in textPart ? textPart.text : '';
-                      })()
-                    : ''}
-                </p>
-              </div>
-            ) : (
-              <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-                {/* Tool Invocations */}
-                {m.parts.some(part => part.type === 'tool-call') && (
-                  <div className="px-6 py-4 bg-blue-50 border-b border-blue-100 space-y-2">
-                    {m.parts.filter(part => part.type === 'tool-call').map((part, idx: number) => {
-                      if ('toolName' in part && 'args' in part) {
-                        const toolPart = part as { toolName: string; args?: { searchQuery?: string } };
-                        return (
-                          <div key={idx} className="flex items-center gap-2 text-sm text-blue-700">
-                            <span className="animate-pulse">●</span> 
-                            {toolPart.toolName === 'search_web' 
-                              ? `Scanning sources for: ${toolPart.args?.searchQuery || 'content'}...` 
-                              : 'Processing...'}
-                          </div>
-                        );
-                      }
-                      return null;
-                    })}
-                  </div>
-                )}
-                
-                {/* Results Header and Content */}
-                {m.parts.some(part => part.type === 'text') && (
-                  <>
-                    <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span className="font-medium text-gray-900">
-                          Analysis {isLoading && m === messages[messages.length - 1] ? 'In Progress' : 'Complete'}
-                        </span>
-                      </div>
-                      {!isLoading && m === messages[messages.length - 1] && (
-                        <button
-                          onClick={copyResults}
-                          className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-all"
-                        >
-                          {copied ? (
-                            <>
-                              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                              Copied!
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                              </svg>
-                              Copy
-                            </>
-                          )}
-                        </button>
-                      )}
+        {messages.map((m) => {
+          const textContent = getMessageText(m);
+          const toolInvocations = getToolInvocations(m);
+
+          return (
+            <div key={m.id}>
+              {m.role === 'user' ? (
+                <div className="bg-gray-100 p-4 rounded-lg">
+                  <p className="font-semibold">You: {textContent}</p>
+                </div>
+              ) : (
+                <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                  {/* Tool Invocations (Searching...) */}
+                  {toolInvocations.length > 0 && (
+                    <div className="px-6 py-4 bg-blue-50 border-b border-blue-100 space-y-2">
+                      {toolInvocations.map((toolCall) => (
+                        <div key={toolCall.toolCallId} className="flex items-center gap-2 text-sm text-blue-700">
+                          <span className="animate-pulse">●</span>
+                          {toolCall.toolName === 'search_web'
+                            ? `Scanning sources for: "${(toolCall.args as { searchQuery?: string })?.searchQuery || 'content'}"...`
+                            : 'Processing...'}
+                        </div>
+                      ))}
                     </div>
-                    {/* Results Content */}
-                    <div className="p-6">
-                      <div className="prose max-w-none">
-                        {m.parts.filter(part => part.type === 'text').map((part, idx: number) => {
-                          if ('text' in part) {
-                            return (
-                              <ReactMarkdown
-                                key={idx}
-                                components={{
-                                  a: ({ href, children }) => (
-                                    <a
-                                      href={href}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 hover:text-blue-800 underline"
-                                    >
-                                      {children}
-                                    </a>
-                                  ),
-                                }}
-                              >
-                                {part.text}
-                              </ReactMarkdown>
-                            );
-                          }
-                          return null;
-                        })}
+                  )}
+
+                  {/* Results Header and Content */}
+                  {textContent && (
+                    <>
+                      <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="font-medium text-gray-900">
+                            Analysis {isLoading && m === messages[messages.length - 1] ? 'In Progress' : 'Complete'}
+                          </span>
+                        </div>
+                        {!isLoading && m === messages[messages.length - 1] && (
+                          <button
+                            onClick={copyResults}
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-all"
+                          >
+                            {copied ? (
+                              <>
+                                <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Copied!
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                                Copy
+                              </>
+                            )}
+                          </button>
+                        )}
                       </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
+                      {/* Results Content */}
+                      <div className="p-6">
+                        <div className="prose max-w-none">
+                          <ReactMarkdown
+                            components={{
+                              a: ({ href, children }) => (
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 underline"
+                                >
+                                  {children}
+                                </a>
+                              ),
+                            }}
+                          >
+                            {textContent}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Footer */}
