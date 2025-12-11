@@ -5,6 +5,18 @@ import Exa from 'exa-js';
 
 export const maxDuration = 60; // Allow longer timeouts for research
 
+// Define message types for better type safety
+interface MessagePart {
+  type: string;
+  text?: string;
+}
+
+interface Message {
+  role: string;
+  parts?: MessagePart[];
+  content?: string;
+}
+
 export async function POST(req: Request) {
   const { messages, timeframe } = await req.json();
 
@@ -17,7 +29,7 @@ export async function POST(req: Request) {
   }
 
   // Extract query from the last user message
-  const lastUserMessage = messages.filter((m: any) => m.role === 'user').pop();
+  const lastUserMessage = messages.filter((m: Message) => m.role === 'user').pop();
   if (!lastUserMessage) {
     return new Response(
       JSON.stringify({ error: 'No user message found' }),
@@ -27,10 +39,10 @@ export async function POST(req: Request) {
 
   // Extract text from message parts
   let query = '';
-  if (lastUserMessage.parts) {
-    const textParts = lastUserMessage.parts.filter((p: any) => p.type === 'text');
-    query = textParts.map((p: any) => p.text).join(' ');
-  } else if (lastUserMessage.content) {
+  if (lastUserMessage.parts && Array.isArray(lastUserMessage.parts)) {
+    const textParts = lastUserMessage.parts.filter((p: MessagePart) => p.type === 'text');
+    query = textParts.map((p: MessagePart) => p.text || '').join(' ');
+  } else if (lastUserMessage.content && typeof lastUserMessage.content === 'string') {
     query = lastUserMessage.content;
   }
 
